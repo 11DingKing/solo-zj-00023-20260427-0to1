@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/api';
-import { useAuthStore } from '@/store/authStore';
-import { DashboardStats, UserRole, Registration, Event } from '@/types';
-import { format } from 'date-fns';
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api";
+import { useAuthStore } from "@/store/authStore";
+import { DashboardStats, UserRole, Registration, Event } from "@/types";
+import { format } from "date-fns";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -14,18 +14,21 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [myEvents, setMyEvents] = useState<Event[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string>('');
-  const [eventRegistrations, setEventRegistrations] = useState<Registration[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [selectedTicketTypeId, setSelectedTicketTypeId] = useState<string>("");
+  const [eventRegistrations, setEventRegistrations] = useState<Registration[]>(
+    [],
+  );
   const [loadingRegistrations, setLoadingRegistrations] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
     if (user?.role !== UserRole.ORGANIZER) {
-      router.push('/');
+      router.push("/");
       return;
     }
 
@@ -38,24 +41,31 @@ export default function DashboardPage() {
     try {
       const [statsData, eventsData] = await Promise.all([
         apiClient.getDashboardStats(),
-        apiClient.getMyEvents()
+        apiClient.getMyEvents(),
       ]);
       setStats(statsData);
       setMyEvents(eventsData);
     } catch (error) {
-      console.error('Failed to fetch data:', error);
+      console.error("Failed to fetch data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchEventRegistrations = async (eventId: string) => {
+  const fetchEventRegistrations = async (
+    eventId: string,
+    ticketTypeId?: string,
+  ) => {
     setLoadingRegistrations(true);
     try {
-      const data = await apiClient.getEventRegistrations(eventId);
+      const params: { ticketTypeId?: string } = {};
+      if (ticketTypeId) {
+        params.ticketTypeId = ticketTypeId;
+      }
+      const data = await apiClient.getEventRegistrations(eventId, params);
       setEventRegistrations(data);
     } catch (error) {
-      console.error('Failed to fetch registrations:', error);
+      console.error("Failed to fetch registrations:", error);
     } finally {
       setLoadingRegistrations(false);
     }
@@ -65,7 +75,7 @@ export default function DashboardPage() {
     try {
       const blob = await apiClient.exportEventRegistrations(eventId);
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `registrations-${eventId}.csv`;
       document.body.appendChild(a);
@@ -73,31 +83,31 @@ export default function DashboardPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Failed to export CSV:', error);
+      console.error("Failed to export CSV:", error);
     }
   };
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
-      case 'confirmed':
-        return 'bg-green-100 text-green-800';
-      case 'checked_in':
-        return 'bg-blue-100 text-blue-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
+      case "confirmed":
+        return "bg-green-100 text-green-800";
+      case "checked_in":
+        return "bg-blue-100 text-blue-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
       default:
-        return 'bg-gray-100 text-gray-800';
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'confirmed':
-        return '已确认';
-      case 'checked_in':
-        return '已签到';
-      case 'cancelled':
-        return '已取消';
+      case "confirmed":
+        return "已确认";
+      case "checked_in":
+        return "已签到";
+      case "cancelled":
+        return "已取消";
       default:
         return status;
     }
@@ -135,15 +145,21 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="text-sm text-gray-500 mb-1">总报名人数</div>
-            <div className="text-3xl font-bold text-gray-900">{stats.totalRegistrations}</div>
+            <div className="text-3xl font-bold text-gray-900">
+              {stats.totalRegistrations}
+            </div>
           </div>
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="text-sm text-gray-500 mb-1">总活动数</div>
-            <div className="text-3xl font-bold text-gray-900">{stats.totalEvents}</div>
+            <div className="text-3xl font-bold text-gray-900">
+              {stats.totalEvents}
+            </div>
           </div>
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="text-sm text-gray-500 mb-1">进行中活动</div>
-            <div className="text-3xl font-bold text-primary-600">{stats.activeEvents}</div>
+            <div className="text-3xl font-bold text-primary-600">
+              {stats.activeEvents}
+            </div>
           </div>
         </div>
       )}
@@ -179,7 +195,9 @@ export default function DashboardPage() {
                 {stats.events.map((event) => (
                   <tr key={event.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">{event.title}</div>
+                      <div className="font-medium text-gray-900">
+                        {event.title}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {event.totalCapacity}
@@ -191,10 +209,10 @@ export default function DashboardPage() {
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           event.registrationRate >= 80
-                            ? 'bg-green-100 text-green-800'
+                            ? "bg-green-100 text-green-800"
                             : event.registrationRate >= 50
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-red-100 text-red-800"
                         }`}
                       >
                         {event.registrationRate}%
@@ -204,7 +222,9 @@ export default function DashboardPage() {
                       {event.checkedInCount}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900">{event.checkInRate}%</span>
+                      <span className="text-sm text-gray-900">
+                        {event.checkInRate}%
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -217,27 +237,58 @@ export default function DashboardPage() {
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4">活动列表</h2>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            选择活动查看报名名单
-          </label>
-          <select
-            value={selectedEventId}
-            onChange={(e) => {
-              setSelectedEventId(e.target.value);
-              if (e.target.value) {
-                fetchEventRegistrations(e.target.value);
-              }
-            }}
-            className="w-full md:w-96 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option value="">-- 请选择活动 --</option>
-            {myEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.title}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              选择活动查看报名名单
+            </label>
+            <select
+              value={selectedEventId}
+              onChange={(e) => {
+                setSelectedEventId(e.target.value);
+                setSelectedTicketTypeId("");
+                if (e.target.value) {
+                  fetchEventRegistrations(e.target.value);
+                }
+              }}
+              className="w-full md:w-72 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">-- 请选择活动 --</option>
+              {myEvents.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedEventId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                按票种筛选
+              </label>
+              <select
+                value={selectedTicketTypeId}
+                onChange={(e) => {
+                  setSelectedTicketTypeId(e.target.value);
+                  fetchEventRegistrations(
+                    selectedEventId,
+                    e.target.value || undefined,
+                  );
+                }}
+                className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">-- 全部票种 --</option>
+                {myEvents
+                  .find((e) => e.id === selectedEventId)
+                  ?.ticketTypes.map((ticketType) => (
+                    <option key={ticketType.id} value={ticketType.id}>
+                      {ticketType.name} (¥{ticketType.price})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {selectedEventId && (
@@ -291,11 +342,17 @@ export default function DashboardPage() {
                       <div className="font-medium text-gray-900">
                         {registration.contactName}
                       </div>
-                      <div className="text-sm text-gray-500">{registration.user?.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {registration.user?.name}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{registration.contactPhone}</div>
-                      <div className="text-sm text-gray-500">{registration.contactEmail}</div>
+                      <div className="text-sm text-gray-900">
+                        {registration.contactPhone}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {registration.contactEmail}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {registration.ticketType?.name}
@@ -306,14 +363,17 @@ export default function DashboardPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeClass(
-                          registration.status
+                          registration.status,
                         )}`}
                       >
                         {getStatusText(registration.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {format(new Date(registration.createdAt), 'yyyy-MM-dd HH:mm')}
+                      {format(
+                        new Date(registration.createdAt),
+                        "yyyy-MM-dd HH:mm",
+                      )}
                     </td>
                   </tr>
                 ))}

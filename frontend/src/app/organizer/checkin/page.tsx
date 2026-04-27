@@ -1,33 +1,84 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Html5Qrcode } from 'html5-qrcode';
-import { apiClient } from '@/lib/api';
-import { useAuthStore } from '@/store/authStore';
-import { Registration, UserRole, RegistrationStatus } from '@/types';
-import { format } from 'date-fns';
+import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { Html5Qrcode } from "html5-qrcode";
+import { apiClient } from "@/lib/api";
+import { useAuthStore } from "@/store/authStore";
+import { Registration, UserRole, RegistrationStatus } from "@/types";
+import { format } from "date-fns";
+
+const playBeep = (
+  frequency: number = 1000,
+  duration: number = 150,
+  type: OscillatorType = "sine",
+) => {
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const audioContext = new AudioContextClass();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioContext.currentTime + duration / 1000,
+    );
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration / 1000);
+
+    setTimeout(() => {
+      audioContext.close().catch(() => {});
+    }, duration + 100);
+  } catch (error) {
+    console.error("Failed to play beep:", error);
+  }
+};
+
+const playSuccessBeep = () => {
+  playBeep(1000, 150, "sine");
+  setTimeout(() => playBeep(1200, 150, "sine"), 100);
+};
+
+const playErrorBeep = () => {
+  playBeep(300, 300, "square");
+};
 
 export default function CheckinPage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [scanning, setScanning] = useState(false);
-  const [manualOrderNumber, setManualOrderNumber] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [checkedRegistration, setCheckedRegistration] = useState<Registration | null>(null);
-  const [history, setHistory] = useState<{ orderNumber: string; success: boolean; message: string; time: Date }[]>([]);
+  const [manualOrderNumber, setManualOrderNumber] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [checkedRegistration, setCheckedRegistration] =
+    useState<Registration | null>(null);
+  const [history, setHistory] = useState<
+    { orderNumber: string; success: boolean; message: string; time: Date }[]
+  >([]);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scannerContainerId = 'qr-reader';
+  const scannerContainerId = "qr-reader";
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
     if (user?.role !== UserRole.ORGANIZER) {
-      router.push('/');
+      router.push("/");
       return;
     }
 
@@ -39,30 +90,30 @@ export default function CheckinPage() {
   }, [isAuthenticated, authLoading, user]);
 
   const startScanning = async () => {
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     try {
       const html5QrCode = new Html5Qrcode(scannerContainerId);
       scannerRef.current = html5QrCode;
 
       await html5QrCode.start(
-        { facingMode: 'environment' },
+        { facingMode: "environment" },
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 }
+          qrbox: { width: 250, height: 250 },
         },
         async (decodedText) => {
           await handleCheckin(decodedText);
         },
         (errorMessage) => {
-          console.log('Scan error:', errorMessage);
-        }
+          console.log("Scan error:", errorMessage);
+        },
       );
 
       setScanning(true);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '无法启动摄像头';
+      const message = err instanceof Error ? err.message : "无法启动摄像头";
       setError(message);
     }
   };
@@ -72,15 +123,15 @@ export default function CheckinPage() {
       try {
         await scannerRef.current.stop();
       } catch (err) {
-        console.error('Failed to stop scanner:', err);
+        console.error("Failed to stop scanner:", err);
       }
       setScanning(false);
     }
   };
 
   const handleCheckin = async (orderNumber: string) => {
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     try {
       const registration = await apiClient.checkIn(orderNumber);
@@ -91,22 +142,24 @@ export default function CheckinPage() {
           orderNumber,
           success: true,
           message: `签到成功: ${registration.contactName}`,
-          time: new Date()
+          time: new Date(),
         },
-        ...prev.slice(0, 9)
+        ...prev.slice(0, 9),
       ]);
+      playSuccessBeep();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '签到失败';
+      const message = err instanceof Error ? err.message : "签到失败";
       setError(message);
       setHistory((prev) => [
         {
           orderNumber,
           success: false,
           message,
-          time: new Date()
+          time: new Date(),
         },
-        ...prev.slice(0, 9)
+        ...prev.slice(0, 9),
       ]);
+      playErrorBeep();
     }
   };
 
@@ -114,7 +167,7 @@ export default function CheckinPage() {
     e.preventDefault();
     if (manualOrderNumber.trim()) {
       handleCheckin(manualOrderNumber.trim());
-      setManualOrderNumber('');
+      setManualOrderNumber("");
     }
   };
 
@@ -156,7 +209,9 @@ export default function CheckinPage() {
           )}
 
           <div className="mt-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">手动输入订单号</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              手动输入订单号
+            </h3>
             <form onSubmit={handleManualCheckin} className="flex gap-2">
               <input
                 type="text"
@@ -195,33 +250,45 @@ export default function CheckinPage() {
               <div className="space-y-3">
                 <div>
                   <div className="text-sm text-gray-500">活动</div>
-                  <div className="font-medium">{checkedRegistration.event?.title}</div>
+                  <div className="font-medium">
+                    {checkedRegistration.event?.title}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">订单号</div>
-                  <div className="font-mono font-medium">{checkedRegistration.orderNumber}</div>
+                  <div className="font-mono font-medium">
+                    {checkedRegistration.orderNumber}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">联系人</div>
-                  <div className="font-medium">{checkedRegistration.contactName}</div>
+                  <div className="font-medium">
+                    {checkedRegistration.contactName}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">联系方式</div>
                   <div>{checkedRegistration.contactPhone}</div>
-                  <div className="text-sm text-gray-600">{checkedRegistration.contactEmail}</div>
+                  <div className="text-sm text-gray-600">
+                    {checkedRegistration.contactEmail}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">票种</div>
                   <div>
-                    {checkedRegistration.ticketType?.name} × {checkedRegistration.quantity}
+                    {checkedRegistration.ticketType?.name} ×{" "}
+                    {checkedRegistration.quantity}
                   </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">签到时间</div>
                   <div className="font-medium text-green-600">
                     {checkedRegistration.checkedInAt
-                      ? format(new Date(checkedRegistration.checkedInAt), 'yyyy-MM-dd HH:mm:ss')
-                      : '-'}
+                      ? format(
+                          new Date(checkedRegistration.checkedInAt),
+                          "yyyy-MM-dd HH:mm:ss",
+                        )
+                      : "-"}
                   </div>
                 </div>
               </div>
@@ -239,13 +306,13 @@ export default function CheckinPage() {
                   <div
                     key={index}
                     className={`flex items-center justify-between p-3 rounded-lg ${
-                      item.success ? 'bg-green-50' : 'bg-red-50'
+                      item.success ? "bg-green-50" : "bg-red-50"
                     }`}
                   >
                     <div>
                       <div
                         className={`font-medium ${
-                          item.success ? 'text-green-700' : 'text-red-700'
+                          item.success ? "text-green-700" : "text-red-700"
                         }`}
                       >
                         {item.message}
@@ -255,7 +322,7 @@ export default function CheckinPage() {
                       </div>
                     </div>
                     <div className="text-xs text-gray-500">
-                      {format(item.time, 'HH:mm:ss')}
+                      {format(item.time, "HH:mm:ss")}
                     </div>
                   </div>
                 ))}
