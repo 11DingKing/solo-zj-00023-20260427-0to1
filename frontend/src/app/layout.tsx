@@ -3,7 +3,7 @@
 import './globals.css';
 import { Inter } from 'next/font/google';
 import Navbar from '@/components/Navbar';
-import { ToastContainer, toast, setAuthErrorHandler } from '@/components/Toast';
+import { ToastContainer, toast } from '@/components/Toast';
 import { useAuthStore } from '@/store/authStore';
 import { setAuthErrorHandler as setApiAuthErrorHandler } from '@/lib/api';
 import { useEffect } from 'react';
@@ -25,13 +25,6 @@ export default function RootLayout({
 
   useEffect(() => {
     setApiAuthErrorHandler(() => {
-      if (isAuthenticated) {
-        toast.error('登录已过期，请重新登录');
-        logout();
-      }
-    });
-
-    setAuthErrorHandler(() => {
       if (isAuthenticated) {
         toast.error('登录已过期，请重新登录');
         logout();
