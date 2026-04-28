@@ -3,9 +3,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Html5Qrcode } from "html5-qrcode";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { Registration, UserRole, RegistrationStatus } from "@/types";
+import { toast } from "@/components/Toast";
 import { format } from "date-fns";
 
 const playBeep = (
@@ -56,6 +57,66 @@ const playErrorBeep = () => {
   playBeep(300, 300, "square");
 };
 
+const getCheckinErrorMessage = (err: unknown): string => {
+  if (err && typeof err === "object" && "message" in err) {
+    const error = err as ApiError;
+    const msg = error.message;
+
+    if (msg === "Registration not found") {
+      return "订单不存在，请检查订单号是否正确";
+    }
+    if (msg === "Already checked in") {
+      return "已签到，请勿重复签到";
+    }
+    if (msg === "Registration is not confirmed") {
+      return "报名未确认，无法签到";
+    }
+    if (msg === "Registration is cancelled") {
+      return "报名已取消，无法签到";
+    }
+    if (msg === "Event has not started") {
+      return "活动尚未开始，无法签到";
+    }
+    if (msg === "Event has ended") {
+      return "活动已结束，无法签到";
+    }
+    if (msg.includes("Authentication") || msg.includes("token")) {
+      return "登录已过期，请重新登录";
+    }
+
+    return msg;
+  }
+  return err instanceof Error ? err.message : "签到失败，请稍后重试";
+};
+
+const getFriendlyCheckinMessage = (message: string): string => {
+  if (message === "Registration not found") {
+    return "订单不存在";
+  }
+  if (message === "Already checked in") {
+    return "已签到";
+  }
+  if (message === "Registration is not confirmed") {
+    return "报名未确认";
+  }
+  if (message === "Registration is cancelled") {
+    return "报名已取消";
+  }
+  if (message === "Event has not started") {
+    return "活动未开始";
+  }
+  if (message === "Event has ended") {
+    return "活动已结束";
+  }
+  if (message.includes("Authentication") || message.includes("token")) {
+    return "登录已过期";
+  }
+  if (message.includes("签到成功")) {
+    return message;
+  }
+  return "签到失败";
+};
+
 export default function CheckinPage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthStore();
@@ -72,12 +133,16 @@ export default function CheckinPage() {
   const scannerContainerId = "qr-reader";
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (authLoading) return;
+
+    if (!isAuthenticated) {
+      toast.info("请先登录");
       router.push("/login");
       return;
     }
 
     if (user?.role !== UserRole.ORGANIZER) {
+      toast.warning("您没有权限访问此页面");
       router.push("/");
       return;
     }
@@ -87,7 +152,7 @@ export default function CheckinPage() {
         scannerRef.current.stop().catch(console.error);
       }
     };
-  }, [isAuthenticated, authLoading, user]);
+  }, [isAuthenticated, authLoading, user, router]);
 
   const startScanning = async () => {
     setError("");
@@ -112,9 +177,11 @@ export default function CheckinPage() {
       );
 
       setScanning(true);
+      toast.info("摄像头已启动，将二维码放入框内");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "无法启动摄像头";
       setError(message);
+      toast.error("无法启动摄像头，请检查权限设置");
     }
   };
 
@@ -122,6 +189,7 @@ export default function CheckinPage() {
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
+        toast.info("扫描已停止");
       } catch (err) {
         console.error("Failed to stop scanner:", err);
       }
@@ -135,30 +203,43 @@ export default function CheckinPage() {
 
     try {
       const registration = await apiClient.checkIn(orderNumber);
-      setSuccess(`签到成功: ${registration.contactName}`);
+      const successMsg = `签到成功: ${registration.contactName}`;
+      setSuccess(successMsg);
       setCheckedRegistration(registration);
+
       setHistory((prev) => [
         {
           orderNumber,
           success: true,
-          message: `签到成功: ${registration.contactName}`,
+          message: successMsg,
           time: new Date(),
         },
         ...prev.slice(0, 9),
       ]);
+
+      toast.success(successMsg);
       playSuccessBeep();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "签到失败";
-      setError(message);
+      const friendlyMessage = getCheckinErrorMessage(err);
+      const historyMessage = getFriendlyCheckinMessage(
+        err && typeof err === "object" && "message" in err
+          ? (err as { message: string }).message
+          : friendlyMessage,
+      );
+
+      setError(friendlyMessage);
+
       setHistory((prev) => [
         {
           orderNumber,
           success: false,
-          message,
+          message: historyMessage,
           time: new Date(),
         },
         ...prev.slice(0, 9),
       ]);
+
+      toast.error(friendlyMessage);
       playErrorBeep();
     }
   };
@@ -168,6 +249,8 @@ export default function CheckinPage() {
     if (manualOrderNumber.trim()) {
       handleCheckin(manualOrderNumber.trim());
       setManualOrderNumber("");
+    } else {
+      toast.warning("请输入订单号");
     }
   };
 
@@ -189,20 +272,39 @@ export default function CheckinPage() {
 
           <div
             id={scannerContainerId}
-            className="w-full aspect-square bg-gray-100 rounded-lg mb-4 overflow-hidden"
-          />
+            className="w-full aspect-square bg-gray-100 rounded-lg mb-4 overflow-hidden flex items-center justify-center"
+          >
+            {!scanning && (
+              <div className="text-center text-gray-500">
+                <svg
+                  className="w-16 h-16 mx-auto mb-2 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                  />
+                </svg>
+                <p>点击下方按钮开始扫描</p>
+              </div>
+            )}
+          </div>
 
           {!scanning ? (
             <button
               onClick={startScanning}
-              className="w-full bg-green-600 text-white hover:bg-green-700 py-3 rounded-lg font-medium"
+              className="w-full bg-green-600 text-white hover:bg-green-700 py-3 rounded-lg font-medium transition-colors"
             >
               开始扫描
             </button>
           ) : (
             <button
               onClick={stopScanning}
-              className="w-full bg-red-600 text-white hover:bg-red-700 py-3 rounded-lg font-medium"
+              className="w-full bg-red-600 text-white hover:bg-red-700 py-3 rounded-lg font-medium transition-colors"
             >
               停止扫描
             </button>
@@ -222,7 +324,7 @@ export default function CheckinPage() {
               />
               <button
                 type="submit"
-                className="bg-primary-600 text-white hover:bg-primary-700 px-4 py-2 rounded-lg font-medium"
+                className="bg-primary-600 text-white hover:bg-primary-700 px-4 py-2 rounded-lg font-medium transition-colors"
               >
                 签到
               </button>
@@ -299,7 +401,22 @@ export default function CheckinPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-4">签到历史</h2>
 
             {history.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">暂无签到记录</div>
+              <div className="text-center text-gray-500 py-8">
+                <svg
+                  className="w-12 h-12 mx-auto mb-2 text-gray-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                暂无签到记录
+              </div>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {history.map((item, index) => (
@@ -309,16 +426,53 @@ export default function CheckinPage() {
                       item.success ? "bg-green-50" : "bg-red-50"
                     }`}
                   >
-                    <div>
+                    <div className="flex items-center gap-3">
                       <div
-                        className={`font-medium ${
-                          item.success ? "text-green-700" : "text-red-700"
+                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          item.success ? "bg-green-100" : "bg-red-100"
                         }`}
                       >
-                        {item.message}
+                        {item.success ? (
+                          <svg
+                            className="w-5 h-5 text-green-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-5 h-5 text-red-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-500 font-mono">
-                        {item.orderNumber}
+                      <div>
+                        <div
+                          className={`font-medium ${
+                            item.success ? "text-green-700" : "text-red-700"
+                          }`}
+                        >
+                          {item.message}
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          {item.orderNumber}
+                        </div>
                       </div>
                     </div>
                     <div className="text-xs text-gray-500">

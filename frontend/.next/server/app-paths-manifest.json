@@ -1,4 +1,10 @@
 {
-  "/register/page": "app/register/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/organizer/dashboard/page": "app/organizer/dashboard/page.js",
+  "/page": "app/page.js",
+  "/my-registrations/page": "app/my-registrations/page.js",
+  "/events/page": "app/events/page.js",
+  "/organizer/events/create/page": "app/organizer/events/create/page.js",
+  "/organizer/checkin/page": "app/organizer/checkin/page.js",
   "/login/page": "app/login/page.js"
 }

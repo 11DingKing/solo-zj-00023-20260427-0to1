@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import {
   User,
   Event,
@@ -12,6 +12,39 @@ import {
 } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+export interface ApiError {
+  message: string;
+  status?: number;
+  isAuthError: boolean;
+}
+
+const createApiError = (error: unknown): ApiError => {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<{ message?: string; errors?: unknown[] }>;
+    const message = axiosError.response?.data?.message || 
+                   (axiosError.response?.data?.errors ? '验证失败' : '') ||
+                   axiosError.message ||
+                   '请求失败';
+    
+    return {
+      message,
+      status: axiosError.response?.status,
+      isAuthError: axiosError.response?.status === 401 || axiosError.response?.status === 403
+    };
+  }
+  
+  return {
+    message: error instanceof Error ? error.message : '未知错误',
+    isAuthError: false
+  };
+};
+
+let onAuthError: (() => void) | null = null;
+
+export const setAuthErrorHandler = (handler: () => void) => {
+  onAuthError = handler;
+};
 
 class ApiClient {
   private client: AxiosInstance;
@@ -33,6 +66,17 @@ class ApiClient {
         return config;
       },
       (error) => Promise.reject(error)
+    );
+
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const apiError = createApiError(error);
+        if (apiError.isAuthError && onAuthError) {
+          onAuthError();
+        }
+        return Promise.reject(apiError);
+      }
     );
   }
 

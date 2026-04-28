@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Registration } from "@/types";
-import { apiClient } from "@/lib/api";
+import { apiClient, ApiError } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
+import { toast } from "@/components/Toast";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 
@@ -152,6 +153,7 @@ const generateTicketImage = async (
 
 const downloadTicket = async (registration: Registration) => {
   try {
+    toast.info("正在生成电子票...");
     const imageData = await generateTicketImage(registration);
     const link = document.createElement("a");
     link.download = `电子票-${registration.orderNumber}.png`;
@@ -159,9 +161,22 @@ const downloadTicket = async (registration: Registration) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success("电子票已下载");
   } catch (error) {
     console.error("Failed to download ticket:", error);
+    toast.error("下载电子票失败");
   }
+};
+
+const getFetchErrorMessage = (err: unknown): string => {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const error = err as ApiError;
+    if (error.isAuthError || error.message.includes("Authentication") || error.message.includes("token")) {
+      return "登录已过期，请重新登录";
+    }
+    return error.message;
+  }
+  return err instanceof Error ? err.message : "获取报名列表失败";
 };
 
 export default function MyRegistrationsPage() {
@@ -169,26 +184,33 @@ export default function MyRegistrationsPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedRegistration, setSelectedRegistration] =
     useState<Registration | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (authLoading) return;
+
+    if (!isAuthenticated) {
+      toast.info("请先登录");
       router.push("/login");
       return;
     }
 
-    if (isAuthenticated) {
-      fetchRegistrations();
-    }
-  }, [isAuthenticated, authLoading]);
+    fetchRegistrations();
+  }, [isAuthenticated, authLoading, router]);
 
   const fetchRegistrations = async () => {
+    setLoading(true);
+    setError("");
+
     try {
       const data = await apiClient.getMyRegistrations();
       setRegistrations(data);
-    } catch (error) {
-      console.error("Failed to fetch registrations:", error);
+    } catch (err) {
+      const message = getFetchErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -223,7 +245,10 @@ export default function MyRegistrationsPage() {
   if (authLoading || loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center">加载中...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-2"></div>
+          <div className="text-gray-500">加载中...</div>
+        </div>
       </div>
     );
   }
@@ -232,12 +257,35 @@ export default function MyRegistrationsPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">我的报名</h1>
 
-      {registrations.length === 0 ? (
+      {error ? (
         <div className="text-center py-12">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg inline-block">
+            <p className="mb-4">{error}</p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={fetchRegistrations}
+                className="bg-primary-600 text-white hover:bg-primary-700 px-6 py-2 rounded-lg"
+              >
+                重新加载
+              </button>
+              <Link
+                href="/events"
+                className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-6 py-2 rounded-lg"
+              >
+                浏览活动
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : registrations.length === 0 ? (
+        <div className="text-center py-12">
+          <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
           <div className="text-gray-500 mb-4">暂无报名记录</div>
           <Link
             href="/events"
-            className="inline-block bg-primary-600 text-white hover:bg-primary-700 px-6 py-2 rounded-lg"
+            className="inline-block bg-primary-600 text-white hover:bg-primary-700 px-6 py-2 rounded-lg transition-colors"
           >
             浏览活动
           </Link>
@@ -286,7 +334,7 @@ export default function MyRegistrationsPage() {
                             票种: {registration.ticketType?.name} ×{" "}
                             {registration.quantity}
                           </p>
-                          <p>订单号: {registration.orderNumber}</p>
+                          <p>订单号: <span className="font-mono">{registration.orderNumber}</span></p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -307,12 +355,16 @@ export default function MyRegistrationsPage() {
                 <h2 className="text-xl font-bold text-gray-900 mb-4">电子票</h2>
 
                 <div className="text-center mb-4">
-                  {selectedRegistration.qrCodeData && (
+                  {selectedRegistration.qrCodeData ? (
                     <img
                       src={selectedRegistration.qrCodeData}
                       alt="二维码"
-                      className="w-48 h-48 mx-auto"
+                      className="w-48 h-48 mx-auto border-4 border-gray-100 rounded-lg"
                     />
+                  ) : (
+                    <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-gray-400">暂无二维码</span>
+                    </div>
                   )}
                 </div>
 
@@ -361,8 +413,8 @@ export default function MyRegistrationsPage() {
                 </div>
 
                 {selectedRegistration.checkedInAt && (
-                  <div className="text-sm text-gray-500">
-                    签到时间:{" "}
+                  <div className="text-sm text-gray-500 bg-green-50 px-3 py-2 rounded">
+                    ✅ 签到时间:{" "}
                     {format(
                       new Date(selectedRegistration.checkedInAt),
                       "yyyy-MM-dd HH:mm",
@@ -373,7 +425,7 @@ export default function MyRegistrationsPage() {
                 <div className="mt-6">
                   <button
                     onClick={() => downloadTicket(selectedRegistration)}
-                    className="w-full bg-primary-600 text-white hover:bg-primary-700 py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+                    className="w-full bg-primary-600 text-white hover:bg-primary-700 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
                   >
                     <svg
                       className="w-5 h-5"
@@ -394,7 +446,10 @@ export default function MyRegistrationsPage() {
               </div>
             ) : (
               <div className="bg-white rounded-lg shadow-md p-6 sticky top-8">
-                <div className="text-center text-gray-500">
+                <div className="text-center text-gray-500 py-8">
+                  <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                  </svg>
                   点击左侧报名记录查看电子票详情
                 </div>
               </div>
