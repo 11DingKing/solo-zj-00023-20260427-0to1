@@ -62,7 +62,7 @@ export class UserService {
   private generateToken(userId: string, role: UserRole): string {
     const payload: JwtPayload = { userId, role };
     return jwt.sign(payload, env.JWT_SECRET, {
-      expiresIn: env.JWT_EXPIRES_IN as string
+      expiresIn: env.JWT_EXPIRES_IN as any
     });
   }
 }
