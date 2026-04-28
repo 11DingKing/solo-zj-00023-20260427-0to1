@@ -72,6 +72,7 @@ export interface Registration {
   qrCodeData?: string;
   event?: Event;
   ticketType?: TicketType;
+  user?: User;
   createdAt: string;
   updatedAt: string;
 }
