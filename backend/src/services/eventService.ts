@@ -30,8 +30,7 @@ export class EventService {
 
     const ticketTypeEntities = ticketTypes.map((tt) =>
       this.ticketTypeRepository.create({
-        ...tt,
-        event: event
+        ...tt
       })
     );
 

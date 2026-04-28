@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import './globals.css';
-import { Inter } from 'next/font/google';
-import Navbar from '@/components/Navbar';
-import { ToastContainer, toast } from '@/components/Toast';
-import { useAuthStore } from '@/store/authStore';
-import { setAuthErrorHandler as setApiAuthErrorHandler } from '@/lib/api';
-import { useEffect } from 'react';
+import "./globals.css";
+import { Inter } from "next/font/google";
+import Navbar from "@/components/Navbar";
+import { ToastContainer, toast } from "@/components/Toast";
+import { useAuthStore } from "@/store/authStore";
+import { setAuthErrorHandler as setApiAuthErrorHandler } from "@/lib/api";
+import { useEffect } from "react";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export default function RootLayout({
-  children
+  children,
 }: {
   children: React.ReactNode;
 }) {
@@ -26,7 +26,7 @@ export default function RootLayout({
   useEffect(() => {
     setApiAuthErrorHandler(() => {
       if (isAuthenticated) {
-        toast.error('登录已过期，请重新登录');
+        toast.error("登录已过期，请重新登录");
         logout();
       }
     });

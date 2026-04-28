@@ -22,15 +22,37 @@ export interface ApiError {
 const createApiError = (error: unknown): ApiError => {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ message?: string; errors?: unknown[] }>;
-    const message = axiosError.response?.data?.message || 
-                   (axiosError.response?.data?.errors ? '验证失败' : '') ||
-                   axiosError.message ||
-                   '请求失败';
+    const status = axiosError.response?.status;
+    
+    let message: string;
+    
+    if (!axiosError.response) {
+      message = '网络请求失败，请检查网络连接';
+    } else if (status === 401) {
+      message = '登录已过期，请重新登录';
+    } else if (status === 403) {
+      message = '您没有权限执行此操作';
+    } else if (status === 404) {
+      message = '请求的资源不存在';
+    } else if (status === 400) {
+      message = axiosError.response?.data?.message || '请求参数错误';
+    } else if (status === 422) {
+      message = axiosError.response?.data?.message || '数据验证失败';
+    } else if (status === 500) {
+      message = '服务器内部错误，请稍后重试';
+    } else if (status && status >= 500) {
+      message = '服务器错误，请稍后重试';
+    } else {
+      message = axiosError.response?.data?.message || 
+               (axiosError.response?.data?.errors ? '验证失败' : '') ||
+               axiosError.message ||
+               '请求失败';
+    }
     
     return {
       message,
-      status: axiosError.response?.status,
-      isAuthError: axiosError.response?.status === 401 || axiosError.response?.status === 403
+      status,
+      isAuthError: status === 401 || status === 403
     };
   }
   
